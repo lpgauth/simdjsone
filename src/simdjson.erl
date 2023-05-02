@@ -113,7 +113,7 @@ benchmark(NameFuns) ->
 
 benchmark(File, NameFuns) ->
   {ok, Bin} = file:read_file(File),
-  benchmark(100, Bin, NameFuns).
+  benchmark(1000, Bin, NameFuns).
 
 benchmark(N, Bin, NameFuns) ->
   erlang:group_leader(whereis(init), self()),
