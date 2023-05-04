@@ -11,9 +11,10 @@
 #include "simdjson.h"
 using namespace simdjson;
 
-static constexpr const size_t BYTES_PER_REDUCTION = 20;
-static constexpr const size_t ERL_REDUCTION_COUNT = 2000;
-static constexpr const size_t TIMESLICE_BYTES     = ERL_REDUCTION_COUNT * BYTES_PER_REDUCTION / 2;
+static constexpr const size_t BYTES_PER_REDUCTION   = 2;
+static constexpr const size_t ERL_REDUCTION_COUNT   = 2000;
+static constexpr const size_t TIMESLICE_BYTES       = ERL_REDUCTION_COUNT * BYTES_PER_REDUCTION;
+static constexpr const size_t TIMESLICE_NANOSECONDS = 20000;
 
 static ErlNifResourceType* JSON_RESOURCE;
 
@@ -127,11 +128,37 @@ static ERL_NIF_TERM error_reason(ErlNifEnv* env, error_code err)
   }
 }
 
+static uint64_t get_time() {
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return static_cast<uint64_t>(t.tv_sec)*1000000000l + t.tv_nsec;
+}
+
+static void consume_timeslice(ErlNifEnv* env, uint64_t start_time = 0) {
+  auto now = get_time();
+
+  // Figure out how much time elapsed
+  auto elapsed = now - start_time;
+
+  // Convert that to a percentage of a timeslice
+  int slice_percent = (elapsed * 100) / TIMESLICE_NANOSECONDS;
+  if (slice_percent < 0)
+    slice_percent = 0;
+  else if (slice_percent > 100)
+    slice_percent = 100;
+
+  enif_consume_timeslice(env, slice_percent);
+}
+
 static ERL_NIF_TERM decode(ErlNifEnv* env, const ErlNifBinary& bin)
 {
   try {
+    auto start_time = get_time();
+
     dom::parser parser;
     dom::element elm = parser.parse(reinterpret_cast<const char*>(bin.data), bin.size);
+
+    consume_timeslice(env, start_time);
     return make_term(env, elm);
   } catch (simdjson_error const& error) {
     auto msg = enif_make_string(env, error.what(), ERL_NIF_LATIN1);
@@ -152,34 +179,7 @@ static ERL_NIF_TERM decode_dirty(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
   return decode(env, bin);
 }
 
-/*
-static uint64_t get_time() {
-  struct timespec t;
-  clock_gettime(CLOCK_MONOTONIC, &t);
-  return static_cast<uint64_t>(t.tv_sec)*1000000000l + start_time.tv_nsec;
-}
-
-static bool consume_timeslice(ErlNifEnv* env, uint64_t start_time = 0) {
-  auto now = get_time();
-
-  // Figure out how much time elapsed
-  auto elapsed = t - start_time;
-
-  // Convert that to a percentage of a timeslice
-  int slice_percent = (elapsed * 100) / TIMESLICE_NANOSECONDS;
-  if (slice_percent < 0)
-    slice_percent = 0;
-  else if (slice_percent > 100)
-    slice_percent = 100;
-
-  // If the result is 1, then we have consumed the entire slice and should
-  // yield.
-  return enif_consume_timeslice(env, slice_percent) == 1;
-}
-*/
-
-static ERL_NIF_TERM decode_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
-{
+static ERL_NIF_TERM decode_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
   ErlNifBinary bin;
   ERL_NIF_TERM args[1];
 
