@@ -11,7 +11,7 @@
 #include "simdjson.h"
 using namespace simdjson;
 
-static constexpr const size_t BYTES_PER_REDUCTION   = 2;
+static constexpr const size_t BYTES_PER_REDUCTION   = 5;
 static constexpr const size_t ERL_REDUCTION_COUNT   = 2000;
 static constexpr const size_t TIMESLICE_BYTES       = ERL_REDUCTION_COUNT * BYTES_PER_REDUCTION;
 static constexpr const size_t TIMESLICE_NANOSECONDS = 20000;
