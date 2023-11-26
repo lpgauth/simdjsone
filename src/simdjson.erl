@@ -17,7 +17,9 @@
 
 -on_load(init/0).
 
+-define(APPNAME, simdjsone).
 -define(LIBNAME, simdjsone).
+
 -define(NOT_LOADED_ERROR,
   erlang:nif_error({not_loaded, [{module, ?MODULE}, {line, ?LINE}]})).
 
@@ -27,22 +29,18 @@
 -endif.
 
 init() ->
-  NullVal = application:get_env(simdjsone, null, null),
-  is_atom(NullVal) orelse erlang:error("Option simdjsone/null must be an atom"),
-  SoName  =
-    case code:priv_dir(?LIBNAME) of
-      {error, bad_name} ->
-        case code:which(?MODULE) of
-          Filename when is_list(Filename) ->
-            Dir = filename:dirname(filename:dirname(Filename)),
-            filename:join([Dir, "priv", ?LIBNAME]);
-          _ ->
-            filename:join("../priv", ?LIBNAME)
-        end;
-      Dir ->
-        filename:join(Dir, ?LIBNAME)
-  end,
-  erlang:load_nif(SoName, [{null, NullVal}]).
+    SoName = case code:priv_dir(?APPNAME) of
+        {error, bad_name} ->
+            case filelib:is_dir(filename:join(["..", priv])) of
+                true ->
+                    filename:join(["..", priv, ?LIBNAME]);
+                _ ->
+                    filename:join([priv, ?LIBNAME])
+            end;
+        Dir ->
+            filename:join(Dir, ?LIBNAME)
+    end,
+    erlang:load_nif(SoName, [{null, null}]).
 
 %% @doc Decode a JSON string or binary to a term representation of JSON.
 -spec decode(binary()|list()|reference()) -> term().

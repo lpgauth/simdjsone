@@ -1,88 +1,69 @@
-CURDIR		:= $(shell pwd)
-BASEDIR		:= $(abspath $(dir $(CURDIR)))
-PROJECT		?= simdjsone
-PROJECT		:= $(strip $(PROJECT))
+# Based on c_src.mk from erlang.mk by Loic Hoguin <essen@ninenines.eu>
 
-ERL_CXXFLAGS ?= $(shell erl -noshell -noinput -eval "io:format(\"-I~ts/erts-~ts/include -I~ts\", [code:root_dir(), erlang:system_info(version), code:lib_dir(erl_interface, include)]), halt(0).")
-ERL_LDFLAGS  ?= $(shell erl -noshell -noinput -eval "io:format(\"-L~ts\", [code:lib_dir(erl_interface, lib)]), halt(0).")
+CURDIR := $(shell pwd)
+BASEDIR := $(abspath $(CURDIR)/..)
 
-DEBUG     ?= 0
-NIF_DEBUG ?= $(DEBUG)
+PROJECT ?= $(notdir $(BASEDIR))
+PROJECT := $(strip $(PROJECT))
+
+ERTS_INCLUDE_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts/erts-~ts/include/\", [code:root_dir(), erlang:system_info(version)])." -s init stop)
+ERL_INTERFACE_INCLUDE_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts\", [code:lib_dir(erl_interface, include)])." -s init stop)
+ERL_INTERFACE_LIB_DIR ?= $(shell erl -noshell -eval "io:format(\"~ts\", [code:lib_dir(erl_interface, lib)])." -s init stop)
+
+C_SRC_DIR = $(CURDIR)
+C_SRC_OUTPUT ?= $(CURDIR)/../priv/$(PROJECT).so
 
 # System type and C compiler/flags.
 
-ifneq ($(SIMDJSON_NOEXCEPTIONS),)
-  ADD_FLAGS := -DSIMDJSON_DISABLE_DEPRECATED_API -DSIMDJSON_EXCEPTIONS=0
-else
-  ADD_FLAGS := -DSIMDJSON_DISABLE_DEPRECATED_API
+UNAME_SYS := $(shell uname -s)
+ifeq ($(UNAME_SYS), Darwin)
+	CC ?= cc
+	CFLAGS ?= -O3 -std=c99 -finline-functions -Wall -Wmissing-prototypes
+	CXXFLAGS ?= -O3 -finline-functions -Wall
+	LDFLAGS ?= -flat_namespace -undefined suppress
+else ifeq ($(UNAME_SYS), FreeBSD)
+	CC ?= cc
+	CFLAGS ?= -O3 -std=c99 -finline-functions -Wall -Wmissing-prototypes
+	CXXFLAGS ?= -O3 -finline-functions -Wall
+else ifeq ($(UNAME_SYS), Linux)
+	CC ?= gcc
+	CFLAGS ?= -O3 -std=c99 -finline-functions -Wall -Wmissing-prototypes
+	CXXFLAGS ?= -O3 -finline-functions -Wall
 endif
 
-CXX       ?= g++
-CXX_VSN   ?= $(shell $(CXX) --version | sed -n '1s/^[^0-9]\+\([0-9]\+\)\(.[0-9-]\)\+.*$$/\1/p')
-BASE_CXX  := $(basename $(CXX))
+CXX    ?= g++
+CFLAGS += -fPIC -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR)
+CXXFLAGS += -fPIC -I $(ERTS_INCLUDE_DIR) -I $(ERL_INTERFACE_INCLUDE_DIR)
+CPPFLAGS += -DSIMDJSON_DISABLE_DEPRECATED_API -std=c++20 -DNDEBUG
 
-ifeq ($(BASE_CXX),g++)
-  ifeq ($(shell expr $(CXX_VSN) \>= 13),1)
-    C20_FEATURES=1
-  endif
-else ifeq ($(BASE_CXX),clang++)
-  ifeq ($(shell expr $(CXX_VSN) \>= 15),1)
-    C20_FEATURES=1
-  endif
-endif
+LDLIBS += -L $(ERL_INTERFACE_LIB_DIR) -lei
+LDFLAGS += -shared
 
-HAVE_FORMAT ?= $(C20_FEATURES)
-HAVE_SRCLOC ?= $(C20_FEATURES)
+# Verbosity.
+cpp_verbose_0 = @echo " CPP   " $(?F);
+cpp_verbose = $(cpp_verbose_$(V))
 
-ifeq ($(NIF_DEBUG),0)
-  OPTIMIZE  = -O3 -DNDEBUG
-else
-  OPTIMIZE  = -O0 -g
-endif
+link_verbose_0 = @echo " LD    " $(@F);
+link_verbose = $(link_verbose_$(V))
 
-UNAME_SYS  := $(shell uname -s)
-ifeq ($(UNAME_SYS),Linux)
-  CXXFLAGS ?= -mavx2
-else ifeq ($(UNAME_SYS),Darwin)
-  CXXFLAGS ?= -pie
-  LDFLAGS  += -flat_namespace -undefined suppress
-else ifeq ($(UNAME_SYS),FreeBSD)
-  CXXFLAGS ?= -mavx2
-endif
-
-ADD_FLAGS  += -fPIC -finline-functions -Wall -std=c++20
-CXXFLAGS   += $(ADD_FLAGS) $(OPTIMIZE) $(ERL_CXXFLAGS)
-LDFLAGS    += $(ERL_LDFLAGS) -lei -shared
-
-SRC_DIR     = $(CURDIR)
-SO_OUTPUT  ?= $(BASEDIR)/priv/$(PROJECT).so
-
-SOURCES    := $(wildcard *.c*)
-OBJECTS     = $(SOURCES:%.cpp=%.o)
+SOURCES := $(shell find $(C_SRC_DIR) -type f \( -name "*.c" -o -name "*.C" -o -name "*.cc" -o -name "*.cpp" \))
+OBJECTS = $(addsuffix .o, $(basename $(SOURCES)))
 
 COMPILE_CPP = $(cpp_verbose) $(CXX) $(CXXFLAGS) $(CPPFLAGS) -c
 
-# Targets
+$(C_SRC_OUTPUT): $(OBJECTS)
+	@mkdir -p $(BASEDIR)/priv/
+	$(link_verbose) $(CXX) $(OBJECTS) $(LDFLAGS) $(LDLIBS) -o $(C_SRC_OUTPUT)
 
 all: deps $(SO_OUTPUT)
 
 deps: simdjson.h simdjson.cpp
 
 clean:
-	rm -f $(SO_OUTPUT) *.o
-
-info:
-	@echo "SOURCES: $(SOURCES)"
-	@echo "OBJECTS: $(OBJECTS)"
-	@echo "OUTPUT:  $(SO_OUTPUT)"
+	@rm -f $(C_SRC_OUTPUT) $(OBJECTS)
 
 simdjson.h simdjson.cpp:
 	wget -q https://raw.githubusercontent.com/simdjson/simdjson/master/singleheader/$@
 
-$(SO_OUTPUT): $(OBJECTS)
-	@mkdir -p $(BASEDIR)/priv/
-	$(CXX) $(OBJECTS) $(LDFLAGS) -o $(SO_OUTPUT)
-
 %.o: %.cpp
 	$(COMPILE_CPP) $(OUTPUT_OPTION) $<
-
