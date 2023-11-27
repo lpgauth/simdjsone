@@ -6,6 +6,5 @@
 mix.*
 deps/
 doc/
-priv/
 _build/
 .vscode/bookmarks.json
