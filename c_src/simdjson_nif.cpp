@@ -228,24 +228,6 @@ static ERL_NIF_TERM parse_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
     return enif_make_string(env, error_message(res.error()), ERL_NIF_LATIN1);
   }
 
-  ErlNifMonitor mon;
-
-  auto result = enif_monitor_process(env, p, &pid, &mon);
-
-  if (result != 0) [[unlikely]] {
-    if (result > 0) {
-      // Process no longer alive
-      enif_release_resource(p);
-      return enif_raise_exception(env, ATOM_ENOPROCESS);
-    } else {
-      assert(result < 0);
-      // mon callback is not specified
-      enif_release_resource(p);
-      return enif_raise_exception(env, ATOM_ENOCALLBACK);
-    }
-  }
-
-  assert(result == 0);
   ERL_NIF_TERM resource = enif_make_resource(env, p);
   enif_release_resource(p);
 
@@ -332,12 +314,6 @@ static void resource_dtor(ErlNifEnv* env, void* arg)
   static_cast<dom::document*>(arg)->dom::document::~document();
 }
 
-static void resource_down(ErlNifEnv* env, void* obj, ErlNifPid*, ErlNifMonitor*)
-{
-  //fprintf(stderr, "--> Decrement resource ref %p\r\n", obj);
-  enif_release_resource(obj);
-}
-
 static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
   if (!enif_is_list(env, load_info)) {
     fprintf(stderr, "Arguments passed to the NIF loader must be list!\r\n");
@@ -345,11 +321,8 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
   }
 
   auto flags          = (ErlNifResourceFlags)(ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER);
-  ErlNifResourceTypeInit rti{0};
-  rti.dtor            = &resource_dtor;
-  rti.down            = &resource_down;
-  JSON_RESOURCE       = enif_open_resource_type_x(env, "simjson_resource",
-                                                  &rti, flags, nullptr);
+  JSON_RESOURCE       = enif_open_resource_type(env, nullptr, "simjson_resource",
+                                                &resource_dtor, flags, nullptr);
   ATOM_OK             = enif_make_atom(env, "ok");
   ATOM_ERROR          = enif_make_atom(env, "error");
   ATOM_TRUE           = enif_make_atom(env, "true");
