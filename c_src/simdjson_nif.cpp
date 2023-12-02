@@ -223,8 +223,10 @@ static ERL_NIF_TERM parse_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
   dom::parser parser;
   auto res  = parser.parse_into_document(*p, (const char*)bin.data, bin.size);
 
-  if (res.error()) [[unlikely]]
+  if (res.error()) [[unlikely]] {
+    enif_release_resource(p);
     return enif_make_string(env, error_message(res.error()), ERL_NIF_LATIN1);
+  }
 
   ErlNifMonitor mon;
 
