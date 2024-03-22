@@ -43,25 +43,25 @@ init() ->
     erlang:load_nif(SoName, [{null, null}]).
 
 %% @doc Decode a JSON string or binary to a term representation of JSON.
--spec decode(binary()|list()|reference()) -> term().
+-spec decode(binary()|list()|reference()) -> term() | no_return().
 decode(_BinOrRef) ->
   ?NOT_LOADED_ERROR.
 
 %% @doc Parse a JSON string or binary and save it in a resource for later access by `get/2'.
 %% Returns a resource reference owned by the calling pid.
--spec parse(binary()) -> reference().
+-spec parse(binary()) -> reference() | string() | no_return().
 parse(_Bin) ->
   ?NOT_LOADED_ERROR.
 
 %% @doc Find a given `Path' (which must start with a slash) in the JSON resource.
 %% The resource reference must have been previously created by calling
 %% `parse/1,2'.
--spec get(reference(), binary()) -> term().
+-spec get(reference(), binary()) -> term() | no_return().
 get(_Ref, Path) when is_binary(Path) ->
   ?NOT_LOADED_ERROR.
 
 %% @doc Minify a JSON string or binary.
--spec minify(binary()|list()) -> {ok, binary()} | {error, binary()}.
+-spec minify(binary()|list()) -> {ok, binary()} | {error, binary()} | no_return().
 minify(_BinOrStr) ->
   ?NOT_LOADED_ERROR.
 
